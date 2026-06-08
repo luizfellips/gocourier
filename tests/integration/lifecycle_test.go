@@ -97,8 +97,10 @@ func TestFullLifecycle(t *testing.T) {
 	ingestSvc := ingest.NewService(store, deliveryRepo, auditRepo, clock, "notifications", 24*time.Hour)
 	dispatchSvc := dispatch.NewService(
 		deliveryRepo, auditRepo, broker, mock.All(), clock, log,
-		8, time.Second, 30*time.Minute, "notifications",
-		5, 60*time.Second, 30*time.Second,
+		dispatch.Config{
+			MaxAttempts: 8, RetryBase: time.Second, RetryMax: 30 * time.Minute,
+			StreamPrefix: "notifications", CBThreshold: 5, CBWindow: 60 * time.Second, CBCooldown: 30 * time.Second,
+		},
 	)
 	replaySvc := replay.NewService(dispatchSvc)
 
@@ -260,8 +262,10 @@ func TestPermanentFailureMovesToDLQ(t *testing.T) {
 	ingestSvc := ingest.NewService(store, deliveryRepo, auditRepo, clock, "notifications", 24*time.Hour)
 	dispatchSvc := dispatch.NewService(
 		deliveryRepo, auditRepo, broker, mock.All(), clock, log,
-		3, time.Millisecond, time.Second, "notifications",
-		100, time.Second, time.Second,
+		dispatch.Config{
+			MaxAttempts: 3, RetryBase: time.Millisecond, RetryMax: time.Second,
+			StreamPrefix: "notifications", CBThreshold: 100, CBWindow: time.Second, CBCooldown: time.Second,
+		},
 	)
 
 	pubCtx, pubCancel := context.WithCancel(ctx)

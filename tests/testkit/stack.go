@@ -100,8 +100,15 @@ func StartStack(ctx context.Context, t *testing.T, cfg StackConfig) *Stack {
 	ingestSvc := ingest.NewService(store, deliveryRepo, auditRepo, clock, "notifications", cfg.IdempotencyTTL)
 	dispatchSvc := dispatch.NewService(
 		deliveryRepo, auditRepo, broker, providers, clock, log,
-		cfg.MaxAttempts, time.Second, 30*time.Minute, "notifications",
-		cfg.CBThreshold, cfg.CBWindow, cfg.CBCooldown,
+		dispatch.Config{
+			MaxAttempts:  cfg.MaxAttempts,
+			RetryBase:    time.Second,
+			RetryMax:     30 * time.Minute,
+			StreamPrefix: "notifications",
+			CBThreshold:  cfg.CBThreshold,
+			CBWindow:     cfg.CBWindow,
+			CBCooldown:   cfg.CBCooldown,
+		},
 	)
 	replaySvc := replay.NewService(dispatchSvc)
 	publisher := outbox.NewPublisher(outboxRepo, broker, log, 100*time.Millisecond, 50)

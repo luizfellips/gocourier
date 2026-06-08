@@ -76,9 +76,15 @@ func main() {
 
 	dispatchSvc := dispatch.NewService(
 		deliveryRepo, auditRepo, broker, mock.All(), clock, log,
-		cfg.MaxRetryAttempts, cfg.RetryBaseDelay, cfg.RetryMaxDelay,
-		cfg.NATSStreamPrefix,
-		cfg.CircuitBreakerThreshold, cfg.CircuitBreakerWindow, cfg.CircuitBreakerCooldown,
+		dispatch.Config{
+			MaxAttempts:  cfg.MaxRetryAttempts,
+			RetryBase:    cfg.RetryBaseDelay,
+			RetryMax:     cfg.RetryMaxDelay,
+			StreamPrefix: cfg.NATSStreamPrefix,
+			CBThreshold:  cfg.CircuitBreakerThreshold,
+			CBWindow:     cfg.CircuitBreakerWindow,
+			CBCooldown:   cfg.CircuitBreakerCooldown,
+		},
 	)
 	replaySvc := replay.NewService(dispatchSvc)
 
