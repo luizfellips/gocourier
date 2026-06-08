@@ -14,13 +14,20 @@ export type DeliveryStatus =
 export interface DeliveryRow {
   id: string;
   idempotency_key: string;
+  tenant_id?: string;
   channel: Channel;
   priority: Priority;
   status: DeliveryStatus;
   retry_count: number;
   last_error: string;
+  recipient?: Record<string, unknown> | null;
+  template?: Record<string, unknown> | null;
+  payload?: Record<string, unknown> | null;
+  correlation_id?: string;
+  causation_id?: string;
   created_at: string;
   updated_at: string;
+  scheduled_at?: string | null;
 }
 
 export interface ActivityEvent {
@@ -53,6 +60,7 @@ export interface AuditRow {
   id: number;
   delivery_id: string;
   event_type: string;
+  payload?: Record<string, unknown>;
   created_at: string;
 }
 

@@ -16,16 +16,22 @@ type DashboardSummary struct {
 }
 
 type DeliveryRow struct {
-	ID             string     `json:"id"`
-	IdempotencyKey string     `json:"idempotency_key"`
-	Channel        string     `json:"channel"`
-	Priority       string     `json:"priority"`
-	Status         string     `json:"status"`
-	RetryCount     int        `json:"retry_count"`
-	LastError      string     `json:"last_error,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	ScheduledAt    *time.Time `json:"scheduled_at,omitempty"`
+	ID             string          `json:"id"`
+	IdempotencyKey string          `json:"idempotency_key"`
+	TenantID       string          `json:"tenant_id,omitempty"`
+	Channel        string          `json:"channel"`
+	Priority       string          `json:"priority"`
+	Status         string          `json:"status"`
+	RetryCount     int             `json:"retry_count"`
+	LastError      string          `json:"last_error,omitempty"`
+	Recipient      json.RawMessage `json:"recipient,omitempty"`
+	Template       json.RawMessage `json:"template,omitempty"`
+	Payload        json.RawMessage `json:"payload,omitempty"`
+	CorrelationID  string          `json:"correlation_id,omitempty"`
+	CausationID    string          `json:"causation_id,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+	ScheduledAt    *time.Time      `json:"scheduled_at,omitempty"`
 }
 
 type DeliveryDetail struct {

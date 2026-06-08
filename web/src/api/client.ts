@@ -34,11 +34,33 @@ async function request<T>(
   return res.json() as Promise<T>
 }
 
+function parseJSONField(value: unknown): Record<string, unknown> | null {
+  if (value == null) return null;
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === 'string' && value.length > 0) {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 function asDeliveryRow(d: DeliveryRow): DeliveryRow {
   return {
     ...d,
     last_error: d.last_error ?? '',
     priority: d.priority ?? 'normal',
+    recipient: parseJSONField(d.recipient),
+    template: parseJSONField(d.template),
+    payload: parseJSONField(d.payload),
+    scheduled_at: d.scheduled_at ?? null,
   }
 }
 
@@ -56,6 +78,7 @@ function asAudit(e: AuditRow & { payload?: unknown }): AuditRow {
     id: e.id,
     delivery_id: e.delivery_id,
     event_type: e.event_type,
+    payload: parseJSONField(e.payload) ?? undefined,
     created_at: e.created_at,
   }
 }

@@ -28,6 +28,15 @@ services:
     networks:
       - internal
 
+  nats-exporter:
+    image: natsio/prometheus-nats-exporter:0.15.0
+    command: ["-varz", "-connz", "-jsz=all", "http://nats:8222"]
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - internal
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.96.0
     command: ["--config=/etc/otel-collector-config.yaml"]
@@ -97,6 +106,12 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
       OTEL_SERVICE_NAME: api
       OTEL_TRACES_SAMPLER: parentbased_always_on
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     depends_on:
       postgres:
         condition: service_healthy
@@ -164,7 +179,8 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     networks:
       - public
       - internal

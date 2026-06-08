@@ -89,12 +89,14 @@ func (r *DashboardRepo) Summary(ctx context.Context, limit int) (*ports.Dashboar
 
 func (r *DashboardRepo) Detail(ctx context.Context, deliveryID string) (*ports.DeliveryDetail, error) {
 	row := r.pool.QueryRow(ctx, `
-		SELECT id, idempotency_key, channel, priority, status, retry_count,
-			COALESCE(last_error, ''), created_at, updated_at, scheduled_at
+		SELECT id, idempotency_key, tenant_id, channel, priority, status, retry_count,
+			COALESCE(last_error, ''), recipient, template, payload,
+			COALESCE(correlation_id, ''), COALESCE(causation_id, ''),
+			created_at, updated_at, scheduled_at
 		FROM deliveries WHERE id = $1
 	`, deliveryID)
 
-	delivery, err := scanDeliveryRow(row)
+	delivery, err := scanDeliveryDetailRow(row)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, apperrors.ErrNotFound
@@ -177,6 +179,29 @@ func scanDeliveryRow(row pgx.Row) (ports.DeliveryRow, error) {
 		&d.RetryCount, &d.LastError, &d.CreatedAt, &d.UpdatedAt, &d.ScheduledAt,
 	)
 	return d, err
+}
+
+func scanDeliveryDetailRow(row pgx.Row) (ports.DeliveryRow, error) {
+	var d ports.DeliveryRow
+	var recipient, template, payload []byte
+	err := row.Scan(
+		&d.ID, &d.IdempotencyKey, &d.TenantID, &d.Channel, &d.Priority, &d.Status,
+		&d.RetryCount, &d.LastError, &recipient, &template, &payload,
+		&d.CorrelationID, &d.CausationID, &d.CreatedAt, &d.UpdatedAt, &d.ScheduledAt,
+	)
+	if err != nil {
+		return d, err
+	}
+	if len(recipient) > 0 {
+		d.Recipient = recipient
+	}
+	if len(template) > 0 {
+		d.Template = template
+	}
+	if len(payload) > 0 {
+		d.Payload = payload
+	}
+	return d, nil
 }
 
 func scanAuditEntry(row pgx.Row) (ports.AuditEntry, error) {

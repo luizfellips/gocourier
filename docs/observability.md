@@ -29,7 +29,7 @@ docker compose up --build
 ## Validation checklist
 
 1. All containers healthy: `docker compose ps`
-2. Prometheus targets UP: http://localhost:9090/targets (api, worker, scheduler)
+2. Prometheus targets UP: http://localhost:9090/targets (api, worker, scheduler, nats-exporter)
 3. Grafana dashboards: **Notification Platform** folder — API, Worker, Queue, System
 4. Send notification via web → Tempo search by `delivery_id` shows api + worker spans
 5. **Load Test Panel** (retry storm / failure mix) → worker retry and DLQ metrics move

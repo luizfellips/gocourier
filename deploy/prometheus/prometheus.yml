@@ -24,6 +24,5 @@ scrape_configs:
       - targets: ['otel-collector:8889']
 
   - job_name: nats
-    metrics_path: /varz
     static_configs:
-      - targets: ['nats:8222']
+      - targets: ['nats-exporter:7777']

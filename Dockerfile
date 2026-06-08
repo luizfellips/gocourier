@@ -13,7 +13,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /scheduler ./cmd/scheduler
 
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata wget
 WORKDIR /app
 
 COPY --from=builder /api /app/api
