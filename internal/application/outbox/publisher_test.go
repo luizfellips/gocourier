@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/gocourier/internal/ports"
 	"github.com/gocourier/pkg/logger"
@@ -132,5 +133,27 @@ func TestPublisherContinuesOnBrokerFailure(t *testing.T) {
 	}
 	if broker.count != 1 {
 		t.Fatalf("expected 1 successful publish, got %d", broker.count)
+	}
+}
+
+func TestPublisherRunStopsOnCancel(t *testing.T) {
+	repo := newMemOutboxRepo()
+	broker := &memBroker{}
+	pub := NewPublisher(repo, broker, logger.New("error"), 10*time.Millisecond, 10)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- pub.Run(ctx) }()
+
+	time.Sleep(25 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected cancel, got %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Run did not stop after cancel")
 	}
 }
