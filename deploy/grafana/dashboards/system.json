@@ -1,0 +1,46 @@
+{
+  "uid": "system-dashboard",
+  "title": "System",
+  "tags": ["phase-b", "system"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Scrape targets up",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "targets": [{"expr": "sum(up)", "refId": "A"}]
+    },
+    {
+      "id": 2,
+      "title": "Go goroutines (api)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "targets": [{"expr": "go_goroutines{job=\"api\"}", "refId": "A"}]
+    },
+    {
+      "id": 3,
+      "title": "DB pool acquired",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "targets": [{"expr": "db_pool_acquired_connections", "refId": "A"}]
+    },
+    {
+      "id": 4,
+      "title": "Process CPU (api)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [{"expr": "rate(process_cpu_seconds_total{job=\"api\"}[1m])", "refId": "A"}]
+    },
+    {
+      "id": 5,
+      "title": "Process memory (api)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [{"expr": "process_resident_memory_bytes{job=\"api\"}", "refId": "A"}]
+    }
+  ]
+}

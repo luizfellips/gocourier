@@ -1,0 +1,13 @@
+# Vegeta sustained load test for notification ingest API
+# Usage: vegeta attack -duration=5m -rate=200 -targets=tests/performance/vegeta/targets.txt | vegeta report
+#
+# SLO targets:
+#   p50 < 50ms, p95 < 150ms, p99 < 300ms
+#   error rate < 0.1%
+#   throughput 500 req/s (load), find breaking point (stress)
+
+POST http://localhost:3000/v1/notifications
+Content-Type: application/json
+X-API-Key: dev-api-key
+
+{"schema_version":"1.0","idempotency_key":"vegeta-placeholder","channel":"email","priority":"normal","recipient":{"address":"stress@example.com"},"template":{"id":"welcome"}}

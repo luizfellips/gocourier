@@ -1,0 +1,15 @@
+*.exe
+*.dll
+*.so
+*.dylib
+/bin/
+/dist/
+/.env
+/deploy/.env
+*.dump
+*.dump.gz
+.idea/
+.vscode/
+*.test
+web/node_modules
+web/dist

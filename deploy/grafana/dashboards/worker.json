@@ -1,0 +1,39 @@
+{
+  "uid": "worker-dashboard",
+  "title": "Worker",
+  "tags": ["phase-b", "worker"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Active jobs",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "worker_active_jobs", "refId": "A"}]
+    },
+    {
+      "id": 2,
+      "title": "Retry rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "rate(notifications_retried_total[1m])", "refId": "A"}]
+    },
+    {
+      "id": 3,
+      "title": "DLQ rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [{"expr": "sum(rate(notifications_dlq_total[1m])) by (channel)", "refId": "A"}]
+    },
+    {
+      "id": 4,
+      "title": "Dispatch p99",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [{"expr": "histogram_quantile(0.99, sum(rate(dispatch_duration_seconds_bucket[5m])) by (le))", "refId": "A"}]
+    }
+  ]
+}

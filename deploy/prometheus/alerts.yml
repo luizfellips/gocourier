@@ -1,0 +1,53 @@
+groups:
+  - name: notification-platform
+    rules:
+      - alert: HighAPIErrorRate
+        expr: |
+          sum(rate(api_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(api_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: API 5xx rate above 5%
+
+      - alert: QueueBacklog
+        expr: queue_depth > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Outbox queue depth exceeds 1000
+
+      - alert: ExcessiveRetries
+        expr: rate(notifications_retried_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Notification retry rate spike
+
+      - alert: DLQGrowth
+        expr: rate(notifications_dlq_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: DLQ growth detected
+
+      - alert: HighDispatchLatency
+        expr: histogram_quantile(0.99, sum(rate(dispatch_duration_seconds_bucket[5m])) by (le)) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: p99 dispatch latency above 30s
+
+      - alert: WorkerDown
+        expr: up{job="worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Worker metrics target is down

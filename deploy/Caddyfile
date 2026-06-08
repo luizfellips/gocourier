@@ -1,0 +1,6 @@
+# Optional: use caddy instead of web service by uncommenting in docker-compose
+# :80 {
+# 	reverse_proxy /v1/* api:8080
+# 	reverse_proxy /health api:8080
+# 	reverse_proxy web:80
+# }

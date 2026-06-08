@@ -1,0 +1,39 @@
+{
+  "uid": "queue-dashboard",
+  "title": "Queue",
+  "tags": ["phase-b", "queue"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Outbox depth",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "queue_depth", "refId": "A"}]
+    },
+    {
+      "id": 2,
+      "title": "Broker publish rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "sum(rate(broker_publish_total[1m])) by (result)", "refId": "A"}]
+    },
+    {
+      "id": 3,
+      "title": "Broker consume rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [{"expr": "sum(rate(broker_consume_total[1m])) by (result)", "refId": "A"}]
+    },
+    {
+      "id": 4,
+      "title": "Outbox publish latency",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(outbox_publish_duration_seconds_bucket[5m])) by (le))", "refId": "A"}]
+    }
+  ]
+}
