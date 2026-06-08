@@ -9,14 +9,16 @@ import (
 
 	"github.com/gocourier/internal/adapters/nats"
 	"github.com/gocourier/internal/adapters/postgres"
+	chproviders "github.com/gocourier/internal/adapters/providers"
 	"github.com/gocourier/internal/adapters/providers/mock"
 	"github.com/gocourier/internal/application/dispatch"
-	"github.com/gocourier/internal/domain/notification"
 	"github.com/gocourier/internal/application/ingest"
 	"github.com/gocourier/internal/application/outbox"
 	"github.com/gocourier/internal/application/replay"
 	"github.com/gocourier/internal/application/scheduler"
+	"github.com/gocourier/internal/domain/notification"
 	"github.com/gocourier/internal/ports"
+	"github.com/gocourier/internal/wiring"
 	"github.com/gocourier/pkg/logger"
 	"github.com/stretchr/testify/require"
 )
@@ -53,11 +55,11 @@ type Stack struct {
 	Broker   *nats.Broker
 	Clock    *FixedClock
 
-	Store        *postgres.Store
-	DeliveryRepo *postgres.DeliveryRepo
-	OutboxRepo   *postgres.OutboxRepo
+	Store         *postgres.Store
+	DeliveryRepo  *postgres.DeliveryRepo
+	OutboxRepo    *postgres.OutboxRepo
 	ScheduledRepo *postgres.ScheduledRepo
-	AuditRepo    *postgres.AuditRepo
+	AuditRepo     *postgres.AuditRepo
 	DashboardRepo *postgres.DashboardRepo
 
 	Ingest    *ingest.Service
@@ -88,19 +90,18 @@ func StartStack(ctx context.Context, t *testing.T, cfg StackConfig) *Stack {
 
 	log := logger.New("error")
 	clock := NewFixedClock(time.Now().UTC())
+	providers := chproviders.Default()
 
-	store := postgres.NewStore(pg.Pool)
-	deliveryRepo := postgres.NewDeliveryRepo(pg.Pool)
-	outboxRepo := postgres.NewOutboxRepo(pg.Pool)
-	scheduledRepo := postgres.NewScheduledRepo(pg.Pool)
-	auditRepo := postgres.NewAuditRepo(pg.Pool)
-	dashboardRepo := postgres.NewDashboardRepo(pg.Pool)
-	providers := mock.All()
-
-	ingestSvc := ingest.NewService(store, deliveryRepo, auditRepo, clock, "notifications", cfg.IdempotencyTTL)
-	dispatchSvc := dispatch.NewService(
-		deliveryRepo, auditRepo, broker, providers, clock, log,
-		dispatch.Config{
+	repos := wiring.NewRepositories(pg.Pool)
+	svc := wiring.NewServices(wiring.Params{
+		Repos:          repos,
+		Broker:         broker,
+		Clock:          clock,
+		Log:            log,
+		Providers:      providers,
+		StreamPrefix:   "notifications",
+		IdempotencyTTL: cfg.IdempotencyTTL,
+		Dispatch: dispatch.Config{
 			MaxAttempts:  cfg.MaxAttempts,
 			RetryBase:    time.Second,
 			RetryMax:     30 * time.Minute,
@@ -109,29 +110,26 @@ func StartStack(ctx context.Context, t *testing.T, cfg StackConfig) *Stack {
 			CBWindow:     cfg.CBWindow,
 			CBCooldown:   cfg.CBCooldown,
 		},
-	)
-	replaySvc := replay.NewService(dispatchSvc)
-	publisher := outbox.NewPublisher(outboxRepo, broker, log, 100*time.Millisecond, 50)
-	schedSvc := scheduler.NewService(
-		scheduledRepo, deliveryRepo, outboxRepo, auditRepo, clock, log,
-		"notifications", 100*time.Millisecond, 50,
-	)
+		OutboxPollInterval:    100 * time.Millisecond,
+		OutboxBatchSize:       50,
+		SchedulerPollInterval: 100 * time.Millisecond,
+	})
 
 	return &Stack{
 		Postgres:      pg,
 		Broker:        broker,
 		Clock:         clock,
-		Store:         store,
-		DeliveryRepo:  deliveryRepo,
-		OutboxRepo:    outboxRepo,
-		ScheduledRepo: scheduledRepo,
-		AuditRepo:     auditRepo,
-		DashboardRepo: dashboardRepo,
-		Ingest:        ingestSvc,
-		Dispatch:      dispatchSvc,
-		Replay:        replaySvc,
-		Scheduler:     schedSvc,
-		Outbox:        publisher,
+		Store:         repos.Store,
+		DeliveryRepo:  repos.Delivery,
+		OutboxRepo:    repos.Outbox,
+		ScheduledRepo: repos.Scheduled,
+		AuditRepo:     repos.Audit,
+		DashboardRepo: repos.Dashboard,
+		Ingest:        svc.Ingest,
+		Dispatch:      svc.Dispatch,
+		Replay:        svc.Replay,
+		Scheduler:     svc.Scheduler,
+		Outbox:        svc.Outbox,
 		Providers:     providers,
 		Log:           log,
 	}

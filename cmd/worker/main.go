@@ -1,90 +1,37 @@
 package main
 
 import (
-	"context"
+	"fmt"
+	"log/slog"
 	"os"
-	"os/signal"
-	"syscall"
 
-	"github.com/gocourier/internal/adapters/nats"
-	"github.com/gocourier/internal/adapters/postgres"
-	"github.com/gocourier/internal/adapters/providers/mock"
-	"github.com/gocourier/internal/application/dispatch"
+	workerapp "github.com/gocourier/internal/app/worker"
+	"github.com/gocourier/internal/bootstrap"
 	"github.com/gocourier/internal/config"
-	"github.com/gocourier/internal/ports"
-	"github.com/gocourier/pkg/logger"
-	"github.com/gocourier/pkg/telemetry"
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("application stopped", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfg, err := config.Load()
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("load config: %w", err)
 	}
-	log := logger.New(cfg.LogLevel)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := bootstrap.SignalContext()
 	defer stop()
 
-	telCfg := telemetry.ConfigFromEnv(cfg.ServiceName, cfg.MetricsAddr)
-	provider, err := telemetry.Init(ctx, telCfg)
+	infra, cleanup, err := bootstrap.New(ctx, cfg, bootstrap.Options{StartMetricsServer: true})
 	if err != nil {
-		log.Error("telemetry init failed", "error", err)
-		os.Exit(1)
+		return err
 	}
-	defer func() {
-		_ = provider.Shutdown(context.Background())
-	}()
-	if err := telemetry.NewMetricsServer(ctx, telCfg.MetricsAddr); err != nil {
-		log.Error("metrics server failed", "error", err)
-		os.Exit(1)
-	}
+	defer cleanup()
 
-	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
-	if err != nil {
-		log.Error("database connection failed", "error", err)
-		os.Exit(1)
-	}
-	defer pool.Close()
-	telemetry.RunPoolStatsReporter(ctx, pool)
-
-	broker, err := nats.NewBroker(nats.Config{
-		URL:          cfg.NATSURL,
-		StreamPrefix: cfg.NATSStreamPrefix,
-		MaxDeliver:   cfg.NATSMaxDeliver,
-		AckWait:      cfg.NATSAckWait,
-	})
-	if err != nil {
-		log.Error("nats connection failed", "error", err)
-		os.Exit(1)
-	}
-	defer broker.Close()
-
-	if err := broker.EnsureStreams(ctx); err != nil {
-		log.Error("ensure streams failed", "error", err)
-		os.Exit(1)
-	}
-
-	deliveryRepo := postgres.NewDeliveryRepo(pool)
-	auditRepo := postgres.NewAuditRepo(pool)
-	clock := ports.SystemClock{}
-
-	svc := dispatch.NewService(
-		deliveryRepo, auditRepo, broker, mock.All(), clock, log,
-		dispatch.Config{
-			MaxAttempts:  cfg.MaxRetryAttempts,
-			RetryBase:    cfg.RetryBaseDelay,
-			RetryMax:     cfg.RetryMaxDelay,
-			StreamPrefix: cfg.NATSStreamPrefix,
-			CBThreshold:  cfg.CircuitBreakerThreshold,
-			CBWindow:     cfg.CircuitBreakerWindow,
-			CBCooldown:   cfg.CircuitBreakerCooldown,
-		},
-	)
-
-	log.Info("starting worker", "channels", cfg.WorkerChannels, "concurrency", cfg.WorkerConcurrency, "metrics", telCfg.MetricsAddr)
-	if err := svc.Run(ctx, cfg.WorkerConcurrency, cfg.WorkerChannels); err != nil && ctx.Err() == nil {
-		log.Error("worker stopped", "error", err)
-		os.Exit(1)
-	}
+	app := workerapp.New(cfg, infra)
+	return app.Run(ctx)
 }

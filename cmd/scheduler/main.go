@@ -1,65 +1,37 @@
 package main
 
 import (
-	"context"
+	"fmt"
+	"log/slog"
 	"os"
-	"os/signal"
-	"syscall"
 
-	"github.com/gocourier/internal/adapters/postgres"
-	"github.com/gocourier/internal/application/scheduler"
+	schedulerapp "github.com/gocourier/internal/app/scheduler"
+	"github.com/gocourier/internal/bootstrap"
 	"github.com/gocourier/internal/config"
-	"github.com/gocourier/internal/ports"
-	"github.com/gocourier/pkg/logger"
-	"github.com/gocourier/pkg/telemetry"
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("application stopped", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfg, err := config.Load()
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("load config: %w", err)
 	}
-	log := logger.New(cfg.LogLevel)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := bootstrap.SignalContext()
 	defer stop()
 
-	telCfg := telemetry.ConfigFromEnv(cfg.ServiceName, cfg.MetricsAddr)
-	provider, err := telemetry.Init(ctx, telCfg)
+	infra, cleanup, err := bootstrap.New(ctx, cfg, bootstrap.Options{StartMetricsServer: true})
 	if err != nil {
-		log.Error("telemetry init failed", "error", err)
-		os.Exit(1)
+		return err
 	}
-	defer func() {
-		_ = provider.Shutdown(context.Background())
-	}()
-	if err := telemetry.NewMetricsServer(ctx, telCfg.MetricsAddr); err != nil {
-		log.Error("metrics server failed", "error", err)
-		os.Exit(1)
-	}
+	defer cleanup()
 
-	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
-	if err != nil {
-		log.Error("database connection failed", "error", err)
-		os.Exit(1)
-	}
-	defer pool.Close()
-	telemetry.RunPoolStatsReporter(ctx, pool)
-
-	scheduledRepo := postgres.NewScheduledRepo(pool)
-	deliveryRepo := postgres.NewDeliveryRepo(pool)
-	outboxRepo := postgres.NewOutboxRepo(pool)
-	auditRepo := postgres.NewAuditRepo(pool)
-	clock := ports.SystemClock{}
-
-	svc := scheduler.NewService(
-		scheduledRepo, deliveryRepo, outboxRepo, auditRepo, clock, log,
-		cfg.NATSStreamPrefix, cfg.SchedulerPollInterval, cfg.OutboxBatchSize,
-	)
-
-	log.Info("starting scheduler", "metrics", telCfg.MetricsAddr)
-	if err := svc.Run(ctx); err != nil && ctx.Err() == nil {
-		log.Error("scheduler stopped", "error", err)
-		os.Exit(1)
-	}
+	app := schedulerapp.New(cfg, infra)
+	return app.Run(ctx)
 }
