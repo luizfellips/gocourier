@@ -39,18 +39,14 @@ func NewService(
 	providers []ports.ChannelProvider,
 	clock ports.Clock,
 	log *slog.Logger,
-	maxAttempts int,
-	retryBase, retryMax time.Duration,
-	streamPrefix string,
-	cbThreshold int,
-	cbWindow, cbCooldown time.Duration,
+	cfg Config,
 ) *Service {
 	pm := make(map[notification.Channel]ports.ChannelProvider)
 	bm := make(map[notification.Channel]*circuitbreaker.Breaker)
 	for _, p := range providers {
 		ch := p.Channel()
 		pm[ch] = p
-		bm[ch] = circuitbreaker.New(cbThreshold, cbWindow, cbCooldown)
+		bm[ch] = circuitbreaker.New(cfg.CBThreshold, cfg.CBWindow, cfg.CBCooldown)
 	}
 	return &Service{
 		deliveries:   deliveries,
@@ -60,10 +56,10 @@ func NewService(
 		breakers:     bm,
 		clock:        clock,
 		log:          log,
-		maxAttempts:  maxAttempts,
-		retryBase:    retryBase,
-		retryMax:     retryMax,
-		streamPrefix: streamPrefix,
+		maxAttempts:  cfg.MaxAttempts,
+		retryBase:    cfg.RetryBase,
+		retryMax:     cfg.RetryMax,
+		streamPrefix: cfg.StreamPrefix,
 	}
 }
 

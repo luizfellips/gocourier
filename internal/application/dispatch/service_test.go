@@ -101,8 +101,10 @@ func newTestDispatch(t *testing.T, provider ports.ChannelProvider) (*Service, *m
 	now := time.Now().UTC()
 	svc := NewService(
 		repo, audit, broker, []ports.ChannelProvider{provider}, fixedClock{now: now},
-		logger.New("error"), 3, time.Millisecond, time.Second, "notifications",
-		100, time.Second, time.Second,
+		logger.New("error"), Config{
+			MaxAttempts: 3, RetryBase: time.Millisecond, RetryMax: time.Second,
+			StreamPrefix: "notifications", CBThreshold: 100, CBWindow: time.Second, CBCooldown: time.Second,
+		},
 	)
 	return svc, repo, audit, broker
 }
@@ -182,8 +184,10 @@ func TestDispatchConcurrentSkip(t *testing.T) {
 	now := time.Now().UTC()
 	svc := NewService(
 		repo, audit, broker, []ports.ChannelProvider{provider}, fixedClock{now: now},
-		logger.New("error"), 3, time.Millisecond, time.Second, "notifications",
-		100, time.Second, time.Second,
+		logger.New("error"), Config{
+			MaxAttempts: 3, RetryBase: time.Millisecond, RetryMax: time.Second,
+			StreamPrefix: "notifications", CBThreshold: 100, CBWindow: time.Second, CBCooldown: time.Second,
+		},
 	)
 	seedDelivery(repo.inner, "d1", notification.StatusQueued, "a@b.com")
 
