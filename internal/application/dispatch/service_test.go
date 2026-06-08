@@ -3,6 +3,7 @@ package dispatch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -136,6 +137,19 @@ func TestDispatchSkipsSucceeded(t *testing.T) {
 	}
 }
 
+func TestDispatchSkipsDLQ(t *testing.T) {
+	provider := &stubProvider{channel: notification.ChannelEmail}
+	svc, repo, _, _ := newTestDispatch(t, provider)
+	seedDelivery(repo, "d1", notification.StatusDLQ, "a@b.com")
+
+	if err := svc.Dispatch(context.Background(), "d1"); err != nil {
+		t.Fatal(err)
+	}
+	if provider.calls != 0 {
+		t.Fatal("provider should not be called for dlq")
+	}
+}
+
 func TestDispatchPermanentFailureMovesToDLQ(t *testing.T) {
 	provider := &stubProvider{
 		channel: notification.ChannelEmail,
@@ -228,5 +242,182 @@ func TestHandleMessageMissingDeliveryID(t *testing.T) {
 	err := svc.HandleMessage(context.Background(), "", []byte(`{}`), nil)
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestHandleMessageInvalidJSON(t *testing.T) {
+	provider := &stubProvider{channel: notification.ChannelEmail}
+	svc, _, _, _ := newTestDispatch(t, provider)
+	err := svc.HandleMessage(context.Background(), "", []byte(`not-json`), nil)
+	if err == nil {
+		t.Fatal("expected unmarshal error")
+	}
+}
+
+func TestDispatchSuccess(t *testing.T) {
+	provider := &stubProvider{channel: notification.ChannelEmail}
+	svc, repo, audit, _ := newTestDispatch(t, provider)
+	seedDelivery(repo, "d1", notification.StatusQueued, "ok@example.com")
+
+	if err := svc.Dispatch(context.Background(), "d1"); err != nil {
+		t.Fatal(err)
+	}
+	if repo.deliveries["d1"].Status != notification.StatusSucceeded {
+		t.Fatalf("expected succeeded, got %s", repo.deliveries["d1"].Status)
+	}
+	if provider.calls != 1 {
+		t.Fatal("expected provider call")
+	}
+	if len(audit.events) == 0 {
+		t.Fatal("expected audit event")
+	}
+}
+
+func TestDispatchNotFound(t *testing.T) {
+	svc, _, _, _ := newTestDispatch(t, &stubProvider{channel: notification.ChannelEmail})
+	err := svc.Dispatch(context.Background(), "missing")
+	if !errors.Is(err, apperrors.ErrNotFound) {
+		t.Fatalf("expected not found, got %v", err)
+	}
+}
+
+func TestDispatchMaxRetriesMovesToDLQ(t *testing.T) {
+	provider := &stubProvider{
+		channel: notification.ChannelEmail,
+		err:     fmt.Errorf("%w: down", apperrors.ErrTransient),
+	}
+	repo := newMemDeliveryRepo()
+	audit := &memAudit{}
+	broker := &memBroker{}
+	now := time.Now().UTC()
+	svc := NewService(
+		repo, audit, broker, []ports.ChannelProvider{provider}, fixedClock{now: now},
+		logger.New("error"), Config{
+			MaxAttempts: 2, RetryBase: time.Millisecond, RetryMax: time.Second,
+			StreamPrefix: "notifications", CBThreshold: 100, CBWindow: time.Second, CBCooldown: time.Second,
+		},
+	)
+	d := &notification.Delivery{
+		ID: "d1", Channel: notification.ChannelEmail, Priority: notification.PriorityNormal,
+		Recipient: json.RawMessage(`{"address":"a@b.com"}`), Template: json.RawMessage(`{"id":"t"}`),
+		Status: notification.StatusQueued, RetryCount: 1,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	repo.deliveries["d1"] = d
+
+	if err := svc.Dispatch(context.Background(), "d1"); err != nil {
+		t.Fatal(err)
+	}
+	if repo.deliveries["d1"].Status != notification.StatusDLQ {
+		t.Fatalf("expected dlq, got %s", repo.deliveries["d1"].Status)
+	}
+}
+
+func TestReplayDelivery(t *testing.T) {
+	provider := &stubProvider{channel: notification.ChannelEmail}
+	svc, repo, audit, broker := newTestDispatch(t, provider)
+	now := time.Now().UTC()
+	repo.deliveries["d1"] = &notification.Delivery{
+		ID: "d1", Channel: notification.ChannelEmail, Priority: notification.PriorityNormal,
+		Recipient: json.RawMessage(`{"address":"a@b.com"}`), Template: json.RawMessage(`{"id":"t"}`),
+		Status: notification.StatusDLQ, CreatedAt: now, UpdatedAt: now,
+	}
+
+	if err := svc.ReplayDelivery(context.Background(), "d1"); err != nil {
+		t.Fatal(err)
+	}
+	if repo.deliveries["d1"].Status != notification.StatusQueued {
+		t.Fatalf("expected queued, got %s", repo.deliveries["d1"].Status)
+	}
+	if len(broker.published) == 0 {
+		t.Fatal("expected publish")
+	}
+	if len(audit.events) == 0 {
+		t.Fatal("expected audit")
+	}
+}
+
+func TestHandleMessageWithDeliveryID(t *testing.T) {
+	provider := &stubProvider{channel: notification.ChannelEmail}
+	svc, repo, _, _ := newTestDispatch(t, provider)
+	seedDelivery(repo, "d1", notification.StatusQueued, "ok@example.com")
+
+	err := svc.HandleMessage(context.Background(), "notifications.email.normal", []byte(`{"delivery_id":"d1"}`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.calls != 1 {
+		t.Fatal("expected dispatch via message handler")
+	}
+}
+
+func TestHandleMessageDeliveryIDFromHeader(t *testing.T) {
+	provider := &stubProvider{channel: notification.ChannelEmail}
+	svc, repo, _, _ := newTestDispatch(t, provider)
+	seedDelivery(repo, "d1", notification.StatusQueued, "ok@example.com")
+
+	err := svc.HandleMessage(context.Background(), "notifications.email.normal", []byte(`{}`), map[string]string{"delivery_id": "d1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.calls != 1 {
+		t.Fatal("expected dispatch from header")
+	}
+}
+
+func TestDispatchUnknownChannelMovesToDLQ(t *testing.T) {
+	provider := &stubProvider{channel: notification.ChannelEmail}
+	svc, repo, _, broker := newTestDispatch(t, provider)
+	now := time.Now().UTC()
+	repo.deliveries["d1"] = &notification.Delivery{
+		ID: "d1", Channel: notification.ChannelSMS, Priority: notification.PriorityNormal,
+		Recipient: json.RawMessage(`{"address":"+1"}`), Template: json.RawMessage(`{"id":"t"}`),
+		Status: notification.StatusQueued, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := svc.Dispatch(context.Background(), "d1"); err != nil {
+		t.Fatal(err)
+	}
+	if repo.deliveries["d1"].Status != notification.StatusDLQ {
+		t.Fatalf("expected dlq, got %s", repo.deliveries["d1"].Status)
+	}
+	if len(broker.published) == 0 {
+		t.Fatal("expected dlq publish")
+	}
+}
+
+func TestDispatchCircuitBreakerOpen(t *testing.T) {
+	provider := &stubProvider{
+		channel: notification.ChannelEmail,
+		err:     fmt.Errorf("%w: down", apperrors.ErrTransient),
+	}
+	repo := newMemDeliveryRepo()
+	audit := &memAudit{}
+	broker := &memBroker{}
+	now := time.Now().UTC()
+	svc := NewService(
+		repo, audit, broker, []ports.ChannelProvider{provider}, fixedClock{now: now},
+		logger.New("error"), Config{
+			MaxAttempts: 10, RetryBase: time.Millisecond, RetryMax: time.Second,
+			StreamPrefix: "notifications", CBThreshold: 1, CBWindow: time.Minute, CBCooldown: time.Minute,
+		},
+	)
+	seedDelivery(repo, "d1", notification.StatusQueued, "a@b.com")
+	if err := svc.Dispatch(context.Background(), "d1"); err != nil && !apperrors.IsTransient(err) {
+		t.Fatalf("first dispatch: %v", err)
+	}
+	seedDelivery(repo, "d2", notification.StatusQueued, "b@b.com")
+	err := svc.Dispatch(context.Background(), "d2")
+	if !apperrors.IsTransient(err) {
+		t.Fatalf("expected transient from open breaker: %v", err)
+	}
+}
+
+func TestDispatchRunExitsOnCancel(t *testing.T) {
+	provider := &stubProvider{channel: notification.ChannelEmail}
+	svc, _, _, _ := newTestDispatch(t, provider)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := svc.Run(ctx, 0, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancel, got %v", err)
 	}
 }

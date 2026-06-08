@@ -11,5 +11,8 @@
 .idea/
 .vscode/
 *.test
+coverage.out
+coverage
+*.coverprofile
 web/node_modules
 web/dist

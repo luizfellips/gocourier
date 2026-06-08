@@ -47,3 +47,13 @@ func TestAllNotificationSubjectsCount(t *testing.T) {
 		t.Fatalf("expected 12 subjects, got %d", len(subjects))
 	}
 }
+
+func TestAllDLQSubjects(t *testing.T) {
+	subjects := AllDLQSubjects()
+	if len(subjects) != 4 {
+		t.Fatalf("expected 4 dlq subjects, got %d", len(subjects))
+	}
+	if subjects[0] != "dlq.email" {
+		t.Fatalf("unexpected subject: %s", subjects[0])
+	}
+}
